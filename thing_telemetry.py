@@ -2,6 +2,7 @@ from awscrt import io, http, auth
 from awscrt import mqtt5, exceptions
 from awsiot import mqtt_connection_builder, mqtt5_client_builder
 from concurrent.futures import Future
+import time
 
 thing_endpoint = "a2hcchteq9ar5b-ats.iot.eu-central-1.amazonaws.com" #double check this is created
 port = None
@@ -15,6 +16,8 @@ topic_filter = "test/topic"
 future_stopped = Future()
 future_connection_success = Future()
 client_id = "basicPubSub"
+message_topic = "/test/topic"
+message_string = "Hello from virtual thing"
 
 # Callback when any publish is received
 def on_publish_received(publish_packet_data):
@@ -45,17 +48,6 @@ def on_lifecycle_disconnect(lifecycle_disconnect_data: mqtt5.LifecycleDisconnect
     print("Lifecycle Connection Failure")
     print("Connection failed with exception:{}".format(lifecycle_disconnect_data.exception))
 
-# print("----------")
-# print(thing_endpoint)
-# print(port)
-# print(cert_filepath)
-# print(pri_key)
-# print(ca_path)
-# print(None)
-# print(client_id)
-# # print(on_lifecycle_attempting_connect)
-# print("----------")
-
 client =  mqtt5_client_builder.mtls_from_path(
             endpoint = thing_endpoint,
             port = port,
@@ -73,4 +65,27 @@ client =  mqtt5_client_builder.mtls_from_path(
 
 print("MQTT5 Client Created")
 client.start()
-future_connection_success.result()
+lifecycle_connect_success_data = future_connection_success.result()
+
+print("Subscribing to topic '{}'...".format(message_topic))
+subscribe_future = client.subscribe(subscribe_packet=mqtt5.SubscribePacket(
+        subscriptions=[mqtt5.Subscription(
+            topic_filter=message_topic,
+            qos=mqtt5.QoS.AT_LEAST_ONCE)]))
+suback = subscribe_future.result(TIMEOUT)
+print("Subscribed with {}".format(suback.reason_codes))
+
+publish_count = 1
+while (publish_count):
+    message = "{} [{}]".format(message_string, publish_count)
+    print("Publishing message to topic '{}': {}".format(message_topic, message))
+    publish_future = client.publish(mqtt5.PublishPacket(
+        topic=message_topic,
+        payload=message_string,
+        qos=mqtt5.QoS.AT_LEAST_ONCE
+    ))
+    time.sleep(1)
+    publish_count = publish_count + 1 
+    publish_completion_data = publish_future.result(TIMEOUT)
+
+    
